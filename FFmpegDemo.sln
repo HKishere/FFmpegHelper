@@ -1,0 +1,44 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28307.1525
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FFmpegHelper", "FFmpegHelper\FFmpegHelper.vcxproj", "{C8B67E17-71CE-4225-A054-6357A60C56D7}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TestEXE", "TestEXE\TestEXE.vcxproj", "{D83B2657-FB4A-4BC4-B7A9-F5C442D4C96D}"
+	ProjectSection(ProjectDependencies) = postProject
+		{C8B67E17-71CE-4225-A054-6357A60C56D7} = {C8B67E17-71CE-4225-A054-6357A60C56D7}
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C8B67E17-71CE-4225-A054-6357A60C56D7}.Debug|x64.ActiveCfg = Debug|x64
+		{C8B67E17-71CE-4225-A054-6357A60C56D7}.Debug|x64.Build.0 = Debug|x64
+		{C8B67E17-71CE-4225-A054-6357A60C56D7}.Debug|x86.ActiveCfg = Debug|Win32
+		{C8B67E17-71CE-4225-A054-6357A60C56D7}.Debug|x86.Build.0 = Debug|Win32
+		{C8B67E17-71CE-4225-A054-6357A60C56D7}.Release|x64.ActiveCfg = Release|x64
+		{C8B67E17-71CE-4225-A054-6357A60C56D7}.Release|x64.Build.0 = Release|x64
+		{C8B67E17-71CE-4225-A054-6357A60C56D7}.Release|x86.ActiveCfg = Release|Win32
+		{C8B67E17-71CE-4225-A054-6357A60C56D7}.Release|x86.Build.0 = Release|Win32
+		{D83B2657-FB4A-4BC4-B7A9-F5C442D4C96D}.Debug|x64.ActiveCfg = Debug|x64
+		{D83B2657-FB4A-4BC4-B7A9-F5C442D4C96D}.Debug|x64.Build.0 = Debug|x64
+		{D83B2657-FB4A-4BC4-B7A9-F5C442D4C96D}.Debug|x86.ActiveCfg = Debug|Win32
+		{D83B2657-FB4A-4BC4-B7A9-F5C442D4C96D}.Debug|x86.Build.0 = Debug|Win32
+		{D83B2657-FB4A-4BC4-B7A9-F5C442D4C96D}.Release|x64.ActiveCfg = Release|x64
+		{D83B2657-FB4A-4BC4-B7A9-F5C442D4C96D}.Release|x64.Build.0 = Release|x64
+		{D83B2657-FB4A-4BC4-B7A9-F5C442D4C96D}.Release|x86.ActiveCfg = Release|Win32
+		{D83B2657-FB4A-4BC4-B7A9-F5C442D4C96D}.Release|x86.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {549975BF-5C2B-41C2-843D-B1D131E6C7F9}
+	EndGlobalSection
+EndGlobal
