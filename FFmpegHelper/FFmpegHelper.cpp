@@ -5,7 +5,13 @@
 #include "framework.h"
 #include "FFmpegHelper.h"
 #include "iostream"
+#include <thread>
 
+#pragma comment(lib, "avcodec.lib")
+#pragma comment(lib, "avformat.lib")
+#pragma comment(lib, "avutil.lib")
+#pragma comment(lib, "swscale.lib")
+#pragma comment(lib, "avdevice.lib")
 
 // 这是导出变量的一个示例
 FFMPEGHELPER_API int nFFmpegHelper=0;
@@ -19,7 +25,7 @@ FFMPEGHELPER_API int fnFFmpegHelper(void)
 // 这是已导出类的构造函数。
 FFmpegHelper::FFmpegHelper()
 {
-	m_strURLorFileName.clear();
+	memset(m_strURLorFileName, 0, FH_NAME_MAX_LEN);
 	m_nVideoIndex = -1;
 	m_pBuffer;
 
@@ -39,13 +45,17 @@ FFmpegHelper::FFmpegHelper()
     return;
 }
 
-void FFmpegHelper::SetURLOrFileName(char * pUrl)
+bool FFmpegHelper::SetURLOrFileName(char * pUrl)
 {
-	m_strURLorFileName.clear();
-	m_strURLorFileName = pUrl;
-#ifdef DEBUG
-	printf("URL = %s", m_strURLorFileName.c_str());
+	if (sizeof(pUrl) > FH_NAME_MAX_LEN) {
+		return false;
+	}
+	memset(m_strURLorFileName, 0, FH_NAME_MAX_LEN);
+	memcpy(m_strURLorFileName, pUrl, strlen(pUrl) + 1);
+#ifdef _DEBUG
+	printf("URL = %s", m_strURLorFileName);
 #endif // DEBUG
+	return true;
 }
 
 int FFmpegHelper::InitFFmpeg()
@@ -59,7 +69,7 @@ int FFmpegHelper::InitFFmpeg()
 	av_dict_set(&optionsDict, "stimeout", "2000000", 0);
 
 	m_avFormatCtx = avformat_alloc_context();
-	if (0 != avformat_open_input(&m_avFormatCtx, m_strURLorFileName.c_str(),NULL, &optionsDict))
+	if (0 != avformat_open_input(&m_avFormatCtx, m_strURLorFileName,NULL, &optionsDict))
 	{
 		std::cout << "Open input error! url:" << m_strURLorFileName << std::endl;
 		return 1;
@@ -108,32 +118,38 @@ int FFmpegHelper::InitFFmpeg()
     m_VideoH = m_avFormatCtx->streams[m_nVideoIndex]->codecpar->height;
     m_VideoW = m_avFormatCtx->streams[m_nVideoIndex]->codecpar->width;
 
-		// 6.预分配好内存
+	// 预分配好内存
 	m_avPacket = av_packet_alloc();
 	m_avFrameDecodec = av_frame_alloc();
 	m_avFrameRGB = av_frame_alloc();
     m_pBuffer = (uint8_t*)av_malloc(av_image_get_buffer_size(m_dstFormat, m_avCodecCtx->width, m_avCodecCtx->height, 1) * sizeof(uint8_t));
 	
-    // 7.缓存一帧数据
+    // 缓存一帧数据
 	av_image_fill_arrays(m_avFrameDecodec->data, m_avFrameDecodec->linesize, m_pBuffer, m_dstFormat, m_avCodecCtx->width, m_avCodecCtx->height, 1);
 	return 0;
+}
+
+void FFmpegHelper::SetCallBack(FFmpegInterface * p)
+{
+	CallBackInterface = p;
 }
 
 void FFmpegHelper::StartDecodec()
 {
 	std::thread tDecodec(&FFmpegHelper::DecdecThread, this);
-	tDecodec.join();
+	//tDecodec.join();
+	tDecodec.detach();
 }
 
 void FFmpegHelper::DecdecThread()
 {
-	m_dstFormat = AV_PIX_FMT_RGB24;
+	m_dstFormat = AV_PIX_FMT_RGB32;
 	m_avSwsCtx = sws_getContext(m_avCodecCtx->width, m_avCodecCtx->height, m_avCodecCtx->pix_fmt,
         m_VideoW, m_VideoH, m_dstFormat,
         SWS_FAST_BILINEAR, NULL, NULL, NULL);
 	av_image_alloc(m_avFrameRGB->data, m_avFrameRGB->linesize, m_avCodecCtx->width, m_avCodecCtx->height, m_dstFormat, 1);
 
-	while (true) 
+	while (bStartDecodec) 
 	{
 		int nGotPicture = 0;
         int nRet = av_read_frame(m_avFormatCtx, m_avPacket);
@@ -146,13 +162,13 @@ void FFmpegHelper::DecdecThread()
                 nGotPicture = avcodec_receive_frame(m_avCodecCtx, m_avFrameDecodec);
                 if (nRet < 0)
                 {
-                    std::cout << "Decode error.";
+                    //std::cout << "Decode error.";
                     continue;
                 }
 
                 if (nGotPicture < 0)
                 {
-                    std::cout << "Not get image.";
+                    //std::cout << "Not get image.";
                     continue;
                 }
 
@@ -164,8 +180,8 @@ void FFmpegHelper::DecdecThread()
 
                     // 调用回调
 					//CallBackInterface.FFmpegGetDecodecFrame((char*)m_avFrameDecodec->data[0], m_avCodecCtx->height, m_avCodecCtx->width);
-					CallBackInterface.FFmpegGetRGBFrame((char*)m_avFrameRGB->data[0], m_avCodecCtx->height, m_avCodecCtx->width);
-                    Sleep(1);
+					CallBackInterface->FFmpegGetRGBFrame((char*)m_avFrameRGB->data[0], m_avCodecCtx->height, m_avCodecCtx->width);
+                    //Sleep(1);
                 }
             }
         }
@@ -173,6 +189,8 @@ void FFmpegHelper::DecdecThread()
         av_freep(m_avPacket);
         Sleep(1);
 	}
+	sws_freeContext(m_avSwsCtx);
+	bStartDecodec = false;
 }
 
 void FFmpegInterface::FFmpegGetDecodecFrame(char * pData, int nHeight, int nWidth)

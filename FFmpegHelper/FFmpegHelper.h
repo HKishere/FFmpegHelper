@@ -20,18 +20,12 @@ extern "C"
 #include <libavutil/imgutils.h>
 }
 
-#include <string>
-#include <thread>
 
-#pragma comment(lib, "avcodec.lib")
-#pragma comment(lib, "avformat.lib")
-#pragma comment(lib, "avutil.lib")
-#pragma comment(lib, "swscale.lib")
-#pragma comment(lib, "avdevice.lib")
+#define FH_NAME_MAX_LEN 256
 
 struct FFMPEGHELPER_API FFmpegInterface {
-	void FFmpegGetDecodecFrame(char* pData, int nHeight, int nWidth);
-	void FFmpegGetRGBFrame(char* pData, int nHeight, int nWidth);
+	virtual void FFmpegGetDecodecFrame(char* pData, int nHeight, int nWidth);
+	virtual void FFmpegGetRGBFrame(char* pData, int nHeight, int nWidth);
 };
 
 // 此类是从 dll 导出的
@@ -39,8 +33,10 @@ class FFMPEGHELPER_API FFmpegHelper {
 public:
 	FFmpegHelper(void);
 	
-	void SetURLOrFileName(char* pUrl);
+	bool SetURLOrFileName(char* pUrl);
 	int InitFFmpeg();
+
+	void SetCallBack(FFmpegInterface* p);
 
 	void StartDecodec();
 
@@ -48,7 +44,7 @@ public:
 
 
 private:
-	std::string			m_strURLorFileName;	//视频URL或文件名
+	char m_strURLorFileName[FH_NAME_MAX_LEN];	//视频URL或文件名
 	int					m_nVideoIndex;		//视频所在流索引
 	uint8_t *			m_pBuffer;			//缓存储解码后的图像
 
@@ -65,7 +61,9 @@ private:
 	int					m_VideoH;			//视频高
 	int					m_VideoW;			//视频宽
 
-	FFmpegInterface		CallBackInterface;	//回调接口
+	bool				bStartDecodec;		//解码开始标志
+
+	FFmpegInterface*		CallBackInterface;	//回调接口
 };
 
 extern FFMPEGHELPER_API int nFFmpegHelper;
