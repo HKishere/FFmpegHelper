@@ -8,10 +8,10 @@
 
 int main()
 {
-	FFmpegHelper ffmpeghelpr;
-	ffmpeghelpr.SetURLOrFileName(const_cast<char*>(""));
-	ffmpeghelpr.InitFFmpeg();
-	ffmpeghelpr.StartDecodec();
+	FFmpegHelper * ffmpeghelpr = CreateFFmpegHelper();
+	ffmpeghelpr->SetURLOrFileName(const_cast<char*>(""));
+	ffmpeghelpr->InitFFmpeg();
+	ffmpeghelpr->StartDecodec();
     std::cout << "Hello World!\n";
 }
 

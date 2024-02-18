@@ -1,9 +1,8 @@
 ﻿// FFmpegHelper.cpp : 定义 DLL 的导出函数。
 //
-
 #include "pch.h"
 #include "framework.h"
-#include "FFmpegHelper.h"
+#include "FFmpegHelperCore.h"
 #include "iostream"
 #include <thread>
 
@@ -13,17 +12,8 @@
 #pragma comment(lib, "swscale.lib")
 #pragma comment(lib, "avdevice.lib")
 
-// 这是导出变量的一个示例
-FFMPEGHELPER_API int nFFmpegHelper=0;
 
-// 这是导出函数的一个示例。
-FFMPEGHELPER_API int fnFFmpegHelper(void)
-{
-    return 0;
-}
-
-// 这是已导出类的构造函数。
-FFmpegHelper::FFmpegHelper()
+FFmpegHelperCore::FFmpegHelperCore()
 {
 	memset(m_strURLorFileName, 0, FH_NAME_MAX_LEN);
 	m_nVideoIndex = -1;
@@ -32,6 +22,7 @@ FFmpegHelper::FFmpegHelper()
 	m_avFormatCtx = NULL;
 	m_avCodec = NULL;
 	m_avCodec = NULL;
+	m_avCodecCtx = NULL;
 	m_avSwsCtx = NULL;
 	m_dstFormat = AV_PIX_FMT_NONE;
 
@@ -41,11 +32,20 @@ FFmpegHelper::FFmpegHelper()
 
 	m_VideoH = -1;
 	m_VideoW = -1;
+	bStartDecodec = false;
 
-    return;
+	tDecodec = std::thread(&FFmpegHelperCore::DecdecThread, this);
+
 }
 
-bool FFmpegHelper::SetURLOrFileName(char * pUrl)
+FFmpegHelperCore::~FFmpegHelperCore()
+{
+	bStartDecodec = false;
+	condition.notify_all();
+	tDecodec.join();
+}
+
+bool FFmpegHelperCore::SetURLOrFileName(char * pUrl)
 {
 	if (sizeof(pUrl) > FH_NAME_MAX_LEN) {
 		return false;
@@ -58,7 +58,7 @@ bool FFmpegHelper::SetURLOrFileName(char * pUrl)
 	return true;
 }
 
-int FFmpegHelper::InitFFmpeg()
+int FFmpegHelperCore::InitFFmpeg()
 {
 	avformat_network_init();
 
@@ -66,7 +66,7 @@ int FFmpegHelper::InitFFmpeg()
 	AVDictionary *optionsDict = nullptr;
 	av_dict_set(&optionsDict, "buffer_size", "1024000", 0);
     av_dict_set(&optionsDict, "rtsp_transport", "tcp", 0);
-	av_dict_set(&optionsDict, "stimeout", "2000000", 0);
+	av_dict_set(&optionsDict, "timeout", "5000000", 0);// 设置超时，否则在avformat_open_input会一直阻塞
 
 	m_avFormatCtx = avformat_alloc_context();
 	if (0 != avformat_open_input(&m_avFormatCtx, m_strURLorFileName,NULL, &optionsDict))
@@ -129,25 +129,40 @@ int FFmpegHelper::InitFFmpeg()
 	return 0;
 }
 
-void FFmpegHelper::SetCallBack(FFmpegInterface * p)
+int FFmpegHelperCore::StartDecode()
+{
+	return 0;
+}
+
+void FFmpegHelperCore::SetCallBack(FFmpegInterface * p)
 {
 	CallBackInterface = p;
 }
 
-void FFmpegHelper::StartDecodec()
+void FFmpegHelperCore::StartDecodec()
 {
-	std::thread tDecodec(&FFmpegHelper::DecdecThread, this);
+
+	{
+		std::lock_guard<std::mutex> lock(condition_mutex);
+		bStartDecodec = true;
+	}
+	condition.notify_all();
 	//tDecodec.join();
-	tDecodec.detach();
+	//tDecodec.detach();
 }
 
-void FFmpegHelper::DecdecThread()
+void FFmpegHelperCore::DecdecThread()
 {
-	m_dstFormat = AV_PIX_FMT_RGB32;
-	m_avSwsCtx = sws_getContext(m_avCodecCtx->width, m_avCodecCtx->height, m_avCodecCtx->pix_fmt,
-        m_VideoW, m_VideoH, m_dstFormat,
-        SWS_FAST_BILINEAR, NULL, NULL, NULL);
-	av_image_alloc(m_avFrameRGB->data, m_avFrameRGB->linesize, m_avCodecCtx->width, m_avCodecCtx->height, m_dstFormat, 1);
+	std::unique_lock<std::mutex> lk(condition_mutex);
+	condition.wait(lk);
+	if (bStartDecodec)
+	{
+		m_dstFormat = AV_PIX_FMT_RGB32;
+		m_avSwsCtx = sws_getContext(m_avCodecCtx->width, m_avCodecCtx->height, m_avCodecCtx->pix_fmt,
+			m_VideoW, m_VideoH, m_dstFormat,
+			SWS_FAST_BILINEAR, NULL, NULL, NULL);
+		av_image_alloc(m_avFrameRGB->data, m_avFrameRGB->linesize, m_avCodecCtx->width, m_avCodecCtx->height, m_dstFormat, 1);
+	}
 
 	while (bStartDecodec) 
 	{
@@ -201,4 +216,9 @@ void FFmpegInterface::FFmpegGetDecodecFrame(char * pData, int nHeight, int nWidt
 void FFmpegInterface::FFmpegGetRGBFrame(char * pData, int nHeight, int nWidth)
 {
 	return;
+}
+
+FFMPEGHELPER_API FFmpegHelper * CreateFFmpegHelper()
+{
+	return (FFmpegHelper *)new FFmpegHelperCore();
 }
