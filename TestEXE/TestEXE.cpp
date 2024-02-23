@@ -2,6 +2,7 @@
 //
 #include "../FFmpegHelper/FFmpegHelper.h"
 #include <iostream>
+#include <Windows.h>
 
 
 #pragma comment(lib, "FFmpegHelper.lib")
@@ -9,9 +10,17 @@
 int main()
 {
 	FFmpegHelper * ffmpeghelpr = CreateFFmpegHelper();
-	ffmpeghelpr->SetURLOrFileName(const_cast<char*>("rtsp://192.168.20.8:8554/test"));
-	ffmpeghelpr->InitFFmpeg();
-	ffmpeghelpr->StartDecodec();
+	ffmpeghelpr->SetURLOrFileName(const_cast<char*>("rtsp://127.0.0.1:8554/video"));
+	int nRet = ffmpeghelpr->InitFFmpeg();
+	if (nRet == 0)
+	{
+		ffmpeghelpr->StartDecodec();
+		std::cout << "Start Decode!\n";
+	}
+	while (true)
+	{
+		Sleep(3000);
+	}
     std::cout << "Hello World!\n";
 }
 

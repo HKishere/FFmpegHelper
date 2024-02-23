@@ -70,8 +70,11 @@ int FFmpegHelperCore::InitFFmpeg()
     // 打开码流前指定各种参数
 	AVDictionary *optionsDict = nullptr;
 	av_dict_set(&optionsDict, "buffer_size", "1024000", 0);
-    av_dict_set(&optionsDict, "rtsp_transport", "tcp", 0);
-	av_dict_set(&optionsDict, "timeout", "5000000", 0);// 设置超时，否则在avformat_open_input会一直阻塞
+    //av_dict_set(&optionsDict, "rtsp_transport", "udp", 0);
+	av_dict_set(&optionsDict, "rtsp_transport", "udp", 0);
+	//av_dict_set(&optionsDict, "timeout", "5000000", 0);// 设置超时，否则在avformat_open_input会一直阻塞
+	av_dict_set(&optionsDict, "stimeout", "3000000", 0);	// 最多阻塞3秒
+
 
 	m_avFormatCtx = avformat_alloc_context();
 	if (0 != avformat_open_input(&m_avFormatCtx, m_strURLorFileName,NULL, &optionsDict))
@@ -200,7 +203,27 @@ void FFmpegHelperCore::DecdecThread()
 
                     // 调用回调
 					//CallBackInterface.FFmpegGetDecodecFrame((char*)m_avFrameDecodec->data[0], m_avCodecCtx->height, m_avCodecCtx->width);
-					CallBackInterface->FFmpegGetRGBFrame((char*)m_avFrameRGB->data[0], m_avCodecCtx->height, m_avCodecCtx->width);
+					if (CallBackInterface)
+					{
+						CallBackInterface->FFmpegGetRGBFrame((char*)m_avFrameRGB->data[0], m_avCodecCtx->height, m_avCodecCtx->width);
+					}
+
+					// 测试存图
+					if (0)
+					{
+						static bool bSaveOneYuvImage = true;
+						if (bSaveOneYuvImage)
+						{
+							FILE* fp_yuv = fopen("output.yuv", "wb+");
+							int y_size = m_avCodecCtx->width * m_avCodecCtx->height;
+							fwrite(m_avFrameDecodec->data[0], 1, y_size, fp_yuv);		//Y 
+							fwrite(m_avFrameDecodec->data[1], 1, y_size / 4, fp_yuv);	//U
+							fwrite(m_avFrameDecodec->data[2], 1, y_size / 4, fp_yuv);	//V
+							fclose(fp_yuv);
+							bSaveOneYuvImage = false;
+						}
+					}
+					
                     //Sleep(1);
                 }
             }
