@@ -1,16 +1,21 @@
 ﻿// FFmpegHelper.cpp : 定义 DLL 的导出函数。
 //
 #include "pch.h"
-#include "framework.h"
+
 #include "FFmpegHelperCore.h"
-#include "iostream"
+#include <iostream>
 #include <thread>
 
+#ifdef _WIN32
 #pragma comment(lib, "avcodec.lib")
 #pragma comment(lib, "avformat.lib")
 #pragma comment(lib, "avutil.lib")
 #pragma comment(lib, "swscale.lib")
 #pragma comment(lib, "avdevice.lib")
+#else
+#include <unistd.h>
+#endif // _WIN32
+
 
 
 FFmpegHelperCore::FFmpegHelperCore()
@@ -202,7 +207,12 @@ void FFmpegHelperCore::DecdecThread()
         }
         av_packet_unref(m_avPacket);
         av_freep(m_avPacket);
+#ifdef _WIN32
         Sleep(1);
+#else
+		usleep(1000);
+#endif // _WIN32
+
 	}
 	sws_freeContext(m_avSwsCtx);
 	bStartDecodec = false;

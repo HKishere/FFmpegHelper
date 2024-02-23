@@ -10,7 +10,7 @@ extern "C"
 #include <libavutil/imgutils.h>
 };
 
-class FFmpegHelperCore : public FFmpegHelperCore{
+class FFmpegHelperCore : public FFmpegHelper{
 public:
 	FFmpegHelperCore(void);
 	~FFmpegHelperCore();

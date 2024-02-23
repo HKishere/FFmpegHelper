@@ -2,10 +2,14 @@
 // 宏的标准方法。此 DLL 中的所有文件都是用命令行上定义的 FFMPEGHELPER_EXPORTS
 // 符号编译的。在使用此 DLL 的
 #pragma once
+#ifdef _WIN32
 #ifdef FFMPEGHELPER_EXPORTS
 #define FFMPEGHELPER_API __declspec(dllexport)
 #else
 #define FFMPEGHELPER_API __declspec(dllimport)
+#endif
+#else
+#define FFMPEGHELPER_API
 #endif
 // 任何项目上不应定义此符号。这样，源文件中包含此文件的任何其他项目都会将
 // FFMPEGHELPER_API 函数视为是从 DLL 导入的，而此 DLL 则将用此宏定义的

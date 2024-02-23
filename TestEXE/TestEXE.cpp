@@ -9,7 +9,7 @@
 int main()
 {
 	FFmpegHelper * ffmpeghelpr = CreateFFmpegHelper();
-	ffmpeghelpr->SetURLOrFileName(const_cast<char*>(""));
+	ffmpeghelpr->SetURLOrFileName(const_cast<char*>("rtsp://192.168.20.8:8554/test"));
 	ffmpeghelpr->InitFFmpeg();
 	ffmpeghelpr->StartDecodec();
     std::cout << "Hello World!\n";
