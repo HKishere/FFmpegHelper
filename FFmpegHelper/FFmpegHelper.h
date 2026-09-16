@@ -1,4 +1,4 @@
-﻿// 下列 ifdef 块是创建使从 DLL 导出更简单的
+// 下列 ifdef 块是创建使从 DLL 导出更简单的
 // 宏的标准方法。此 DLL 中的所有文件都是用命令行上定义的 FFMPEGHELPER_EXPORTS
 // 符号编译的。在使用此 DLL 的
 #pragma once
@@ -30,10 +30,13 @@ struct FFMPEGHELPER_API FFmpegInterface {
 class FFMPEGHELPER_API FFmpegHelper {
 public:
 
+	// 虚析构：上层delete基类指针时才能正确进入DLL内部析构，停止解码线程并释放资源
+	virtual ~FFmpegHelper() {}
+
 	virtual bool SetURLOrFileName(char* pUrl) = 0;
 
 	virtual int InitFFmpeg() = 0;
-	 
+
 	virtual int StartDecode() = 0;
 
 	virtual void SetCallBack(FFmpegInterface* p) = 0;
@@ -41,6 +44,8 @@ public:
 	virtual void StartDecodec() = 0;
 
 	virtual void DecdecThread() = 0;
+
+	virtual double GetFrameRate() = 0;
 };
 
 FFMPEGHELPER_API FFmpegHelper* CreateFFmpegHelper();

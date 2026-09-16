@@ -1,10 +1,11 @@
-ï»¿// FFmpegHelper.cpp : å®šä¹‰ DLL çš„å¯¼å‡ºå‡½æ•°ã€‚
+// FFmpegHelper.cpp : ¶¨Òå DLL µÄµ¼³öº¯Êı¡£
 //
 #include "pch.h"
 
 #include "FFmpegHelperCore.h"
 #include <iostream>
 #include <thread>
+#include <chrono>
 
 #ifdef _WIN32
 #pragma comment(lib, "avcodec.lib")
@@ -22,10 +23,9 @@ FFmpegHelperCore::FFmpegHelperCore()
 {
 	memset(m_strURLorFileName, 0, FH_NAME_MAX_LEN);
 	m_nVideoIndex = -1;
-	m_pBuffer;
+	m_pBuffer = NULL;
 
 	m_avFormatCtx = NULL;
-	m_avCodec = NULL;
 	m_avCodec = NULL;
 	m_avCodecCtx = NULL;
 	m_avSwsCtx = NULL;
@@ -38,6 +38,8 @@ FFmpegHelperCore::FFmpegHelperCore()
 	m_VideoH = -1;
 	m_VideoW = -1;
 	bStartDecodec = false;
+	bExitThread = false;
+	m_fFps = 25.0;
 
 	tDecodec = std::thread(&FFmpegHelperCore::DecdecThread, this);
 
@@ -45,20 +47,36 @@ FFmpegHelperCore::FFmpegHelperCore()
 
 FFmpegHelperCore::~FFmpegHelperCore()
 {
-	bStartDecodec = false;
+	// Í¨Öª½âÂëÏß³ÌÍË³ö²¢µÈ´ıÆä½áÊøºó£¬ÔÙÍ³Ò»ÊÍ·Å×ÊÔ´
+	{
+		std::lock_guard<std::mutex> lock(condition_mutex);
+		bStartDecodec = false;
+		bExitThread = true;
+	}
 	condition.notify_all();
-	tDecodec.join();
+	if (tDecodec.joinable())
+	{
+		tDecodec.join();
+	}
+
+	if (m_avPacket) av_packet_free(&m_avPacket);
+	if (m_avFrameDecodec) av_frame_free(&m_avFrameDecodec);
+	if (m_avFrameRGB) av_frame_free(&m_avFrameRGB);
+	if (m_pBuffer) av_freep(&m_pBuffer);
+	if (m_avSwsCtx) sws_freeContext(m_avSwsCtx);
+	if (m_avCodecCtx) avcodec_free_context(&m_avCodecCtx);
+	if (m_avFormatCtx) avformat_close_input(&m_avFormatCtx);
 }
 
 bool FFmpegHelperCore::SetURLOrFileName(char * pUrl)
 {
-	if (sizeof(pUrl) > FH_NAME_MAX_LEN) {
+	if (strlen(pUrl) >= FH_NAME_MAX_LEN) {
 		return false;
 	}
 	memset(m_strURLorFileName, 0, FH_NAME_MAX_LEN);
 	memcpy(m_strURLorFileName, pUrl, strlen(pUrl) + 1);
 #ifdef _DEBUG
-	printf("URL = %s", m_strURLorFileName);
+	printf("URL = %s\n", m_strURLorFileName);
 #endif // DEBUG
 	return true;
 }
@@ -66,14 +84,16 @@ bool FFmpegHelperCore::SetURLOrFileName(char * pUrl)
 int FFmpegHelperCore::InitFFmpeg()
 {
 	avformat_network_init();
+	unsigned int version = avformat_version();
 
-    // æ‰“å¼€ç æµå‰æŒ‡å®šå„ç§å‚æ•°
+	std::cout << "ffmpeg version : " << version << std::endl;
+    // ´ò¿ªÂëÁ÷Ç°Ö¸¶¨¸÷ÖÖ²ÎÊı
 	AVDictionary *optionsDict = nullptr;
 	av_dict_set(&optionsDict, "buffer_size", "1024000", 0);
-    //av_dict_set(&optionsDict, "rtsp_transport", "udp", 0);
+    //av_dict_set(&optionsDict, "rtsp_transport", "tcp", 0);
 	av_dict_set(&optionsDict, "rtsp_transport", "udp", 0);
-	//av_dict_set(&optionsDict, "timeout", "5000000", 0);// è®¾ç½®è¶…æ—¶ï¼Œå¦åˆ™åœ¨avformat_open_inputä¼šä¸€ç›´é˜»å¡
-	av_dict_set(&optionsDict, "stimeout", "3000000", 0);	// æœ€å¤šé˜»å¡3ç§’
+	//av_dict_set(&optionsDict, "timeout", "5000000", 0);// ÉèÖÃ³¬Ê±£¬·ñÔòÔÚavformat_open_input»áÒ»Ö±×èÈû
+	av_dict_set(&optionsDict, "stimeout", "3000000", 0);	// ×î¶à×èÈû3Ãë
 
 
 	m_avFormatCtx = avformat_alloc_context();
@@ -96,14 +116,23 @@ int FFmpegHelperCore::InitFFmpeg()
 			break;
 		}
 	}
-
 	if (-1 == m_nVideoIndex)
 	{
-		std::cout << "can't find a video stream.";
+		std::cout << "can't find a video stream." << std::endl;
 		return 3;
 	}
 
-	//å¯»æ‰¾ä¸€ä¸ªåŒ¹é…å½“å‰è§†é¢‘æµçš„è§£ç å™¨
+	AVStream* st = m_avFormatCtx->streams[m_nVideoIndex];
+	if (st->avg_frame_rate.num && st->avg_frame_rate.den)
+	{
+		m_fFps = av_q2d(st->avg_frame_rate);
+	}
+	else if (st->r_frame_rate.num && st->r_frame_rate.den)
+	{
+		m_fFps = av_q2d(st->r_frame_rate);
+	}
+
+	//Ñ°ÕÒÒ»¸öÆ¥Åäµ±Ç°ÊÓÆµÁ÷µÄ½âÂëÆ÷
 	m_avCodecCtx = avcodec_alloc_context3(NULL);
 	avcodec_parameters_to_context(m_avCodecCtx, m_avFormatCtx->streams[m_nVideoIndex]->codecpar);
 	m_avCodec = avcodec_find_decoder(m_avCodecCtx->codec_id);
@@ -112,12 +141,12 @@ int FFmpegHelperCore::InitFFmpeg()
 		std::cout << "Codec not find.";
 		return 4;
 	}
-	//è®¾ç½®åŠ é€Ÿè§£ç 
+	//ÉèÖÃ¼ÓËÙ½âÂë
 	m_avCodecCtx->lowres = m_avCodec->max_lowres;
 	m_avCodecCtx->flags2 |= AV_CODEC_FLAG2_FAST;
 
-	//æ‰“å¼€è§£ç å™¨
-	if (avcodec_open2(m_avCodecCtx, m_avCodec, NULL) < 0)//ä¸ºå•¥ä¸è®¾option
+	//´ò¿ª½âÂëÆ÷
+	if (avcodec_open2(m_avCodecCtx, m_avCodec, NULL) < 0)//ÎªÉ¶²»Éèoption
 	{
 		std::cout <<"Codec open failed.";
 		return 5;
@@ -126,14 +155,10 @@ int FFmpegHelperCore::InitFFmpeg()
     m_VideoH = m_avFormatCtx->streams[m_nVideoIndex]->codecpar->height;
     m_VideoW = m_avFormatCtx->streams[m_nVideoIndex]->codecpar->width;
 
-	// é¢„åˆ†é…å¥½å†…å­˜
+	// Ô¤·ÖÅäºÃÄÚ´æ£¨m_avFrameDecodecµÄ»º³åÓÉ½âÂëÆ÷×ÔĞĞ·ÖÅä£¬m_avFrameRGBµÄ»º³åÔÚ½âÂëÏß³ÌÖĞÍ¨¹ıav_image_alloc·ÖÅä£©
 	m_avPacket = av_packet_alloc();
 	m_avFrameDecodec = av_frame_alloc();
 	m_avFrameRGB = av_frame_alloc();
-    m_pBuffer = (uint8_t*)av_malloc(av_image_get_buffer_size(m_dstFormat, m_avCodecCtx->width, m_avCodecCtx->height, 1) * sizeof(uint8_t));
-	
-    // ç¼“å­˜ä¸€å¸§æ•°æ®
-	av_image_fill_arrays(m_avFrameDecodec->data, m_avFrameDecodec->linesize, m_pBuffer, m_dstFormat, m_avCodecCtx->width, m_avCodecCtx->height, 1);
 	return 0;
 }
 
@@ -155,90 +180,138 @@ void FFmpegHelperCore::StartDecodec()
 		bStartDecodec = true;
 	}
 	condition.notify_all();
-	//tDecodec.join();
-	//tDecodec.detach();
 }
 
 void FFmpegHelperCore::DecdecThread()
 {
 	std::unique_lock<std::mutex> lk(condition_mutex);
-	condition.wait(lk);
-	if (bStartDecodec)
+	// ÓÃÎ½´ÊµÈ´ı¡°¿ªÊ¼½âÂë¡±»ò¡°Ïß³ÌÍË³ö¡±Ö¸Áî£¬±ÜÃâ´í¹ınotify¶øÓÀ¾Ã×èÈû
+	condition.wait(lk, [this] { return bStartDecodec || bExitThread; });
+	if (bExitThread || !bStartDecodec)
 	{
-		m_dstFormat = AV_PIX_FMT_RGB32;
-		m_avSwsCtx = sws_getContext(m_avCodecCtx->width, m_avCodecCtx->height, m_avCodecCtx->pix_fmt,
-			m_VideoW, m_VideoH, m_dstFormat,
-			SWS_FAST_BILINEAR, NULL, NULL, NULL);
-		av_image_alloc(m_avFrameRGB->data, m_avFrameRGB->linesize, m_avCodecCtx->width, m_avCodecCtx->height, m_dstFormat, 1);
+		return;
 	}
 
-	while (bStartDecodec) 
+	// ½âÂëºóÍ³Ò»×ª³ÉRGB32½»¸øÉÏ²ãÏÔÊ¾
+	m_dstFormat = AV_PIX_FMT_RGB32;
+	m_avSwsCtx = sws_getContext(m_avCodecCtx->width, m_avCodecCtx->height, m_avCodecCtx->pix_fmt,
+		m_VideoW, m_VideoH, m_dstFormat,
+		SWS_FAST_BILINEAR, NULL, NULL, NULL);
+	av_image_alloc(m_avFrameRGB->data, m_avFrameRGB->linesize, m_avCodecCtx->width, m_avCodecCtx->height, m_dstFormat, 1);
+	lk.unlock();
+
+	if (m_avSwsCtx == NULL)
 	{
-		int nGotPicture = 0;
-        int nRet = av_read_frame(m_avFormatCtx, m_avPacket);
-        if (nRet >= 0)
-        {
-            if (m_avPacket->stream_index == m_nVideoIndex)
-            {
-                // å°†AVPacketä¸­çš„æ•°æ®è§£ç è‡³pFrame
-                nRet = avcodec_send_packet(m_avCodecCtx, m_avPacket);
-                nGotPicture = avcodec_receive_frame(m_avCodecCtx, m_avFrameDecodec);
-                if (nRet < 0)
-                {
-                    //std::cout << "Decode error.";
-                    continue;
-                }
+		std::cout << "sws_getContext failed." << std::endl;
+		bStartDecodec = false;
+		return;
+	}
 
-                if (nGotPicture < 0)
-                {
-                    //std::cout << "Not get image.";
-                    continue;
-                }
+	// ²¥·ÅÊ±¼äÖá»ù×¼£ºµÚnÖ¡Ó¦ÔÚ tStart + (pts_n - pts_0) Ê±¿ÌËÍµ½»Øµ÷¡£
+	// Ö®Ç°½ö¿¿¹Ì¶¨ÑÓÊ±£¨Sleep(1)+¹Ì¶¨Ö¡¼ä¸ô£©¿ØÖÆ½Ú×à£¬WindowsÄ¬ÈÏ¶¨Ê±Æ÷¾«¶ÈÔ¼15.6ms£¬
+	// Êµ¼ÊÖ¡¼ä¸ôºö³¤ºö¶Ì£¬±íÏÖÎª»­Ãæ¡°Ò»¿¨Ò»¿¨¡±¡£
+	double dStartPts = -1.0;
+	double dLastPts = -1.0;
+	std::chrono::steady_clock::time_point tStart = std::chrono::steady_clock::now();
+	AVRational tb = m_avFormatCtx->streams[m_nVideoIndex]->time_base;
 
-                // nGotPictureä¸º0è¡¨ç¤ºæˆåŠŸ
-                if (!nGotPicture)
-                {
-                    sws_scale(m_avSwsCtx, (const uint8_t* const*)m_avFrameDecodec->data, m_avFrameDecodec->linesize, 0,
-                        m_avCodecCtx->height, m_avFrameRGB->data, m_avFrameRGB->linesize);
+	while (bStartDecodec)
+	{
+		int nRet = av_read_frame(m_avFormatCtx, m_avPacket);
+		if (nRet < 0)
+		{
+			// ¶ÁÈ¡Ê§°Ü»ò²¥·Å½áÊø£ºÇå¿Õ½âÂëÆ÷»º´æ²¢seek»Ø¿ªÍ·Ñ­»·²¥·Å£»Ö±²¥Á÷seekÊ§°ÜÔòÉÔµÈÖØÊÔ
+			avcodec_flush_buffers(m_avCodecCtx);
+			if (av_seek_frame(m_avFormatCtx, m_nVideoIndex, 0, AVSEEK_FLAG_BACKWARD) >= 0)
+			{
+				// Ñ­»·²¥·Å£ºÖØÖÃÊ±¼äÖá»ù×¼£¬ÏÂÒ»Ö¡ÖØĞÂ¼ÆÊ±
+				dStartPts = -1.0;
+				tStart = std::chrono::steady_clock::now();
+			}
+			else
+			{
+#ifdef _WIN32
+				Sleep(10);
+#else
+				usleep(10000);
+#endif
+			}
+			continue;
+		}
 
-                    // è°ƒç”¨å›è°ƒ
-					//CallBackInterface.FFmpegGetDecodecFrame((char*)m_avFrameDecodec->data[0], m_avCodecCtx->height, m_avCodecCtx->width);
-					if (CallBackInterface)
+		bool bDisplayed = false;
+		if (m_avPacket->stream_index == m_nVideoIndex)
+		{
+			// ½«AVPacketÖĞµÄÊı¾İ½âÂëÖÁm_avFrameDecodec
+			if (avcodec_send_packet(m_avCodecCtx, m_avPacket) >= 0)
+			{
+				int nGotPicture = avcodec_receive_frame(m_avCodecCtx, m_avFrameDecodec);
+				// nGotPictureÎª0±íÊ¾³É¹¦ÄÃµ½Ò»Ö¡
+				if (0 == nGotPicture)
+				{
+					//std::cout << "[AVPacket]frame flags: " << m_avPacket->flags << " pts: " << m_avPacket->pts << " dts: " << m_avPacket->dts << std::endl;
+					//std::cout << "[AVFrame]frame type: " << m_avFrameDecodec->pict_type << " pts: " << m_avFrameDecodec->pts <<  std::endl << std::endl;
+					sws_scale(m_avSwsCtx, (const uint8_t* const*)m_avFrameDecodec->data, m_avFrameDecodec->linesize, 0,
+						m_avCodecCtx->height, m_avFrameRGB->data, m_avFrameRGB->linesize);
+
+					// °´Ö¡PTSµ÷¶ÈÏÔÊ¾Ê±¿Ì£ºµÈµ½¡°ÆğÊ¼Ê±¿Ì + ¸ÃÖ¡Ïà¶ÔÊ×Ö¡µÄptsÆ«ÒÆ¡±ÔÙ»Øµ÷¡£
+					// ÒÑÂäºóÓÚÊ±¼äÖáÊ±²»µÈ´ı£¨¶ªÖ¡²ßÂÔ£©£¬±ÜÃâÑÓ³ÙÔ½»ıÔ½¶à¡£
+					double dPts = -1.0;
+					if (m_avFrameDecodec->pts != AV_NOPTS_VALUE && tb.num > 0)
 					{
-						CallBackInterface->FFmpegGetRGBFrame((char*)m_avFrameRGB->data[0], m_avCodecCtx->height, m_avCodecCtx->width);
+						dPts = m_avFrameDecodec->pts * av_q2d(tb);
 					}
-
-					// æµ‹è¯•å­˜å›¾
-					if (0)
+					if (dStartPts < 0.0 && dPts >= 0.0)
 					{
-						static bool bSaveOneYuvImage = true;
-						if (bSaveOneYuvImage)
+						dStartPts = dPts;	// µÚÒ»Ö¡×÷ÎªÊ±¼äÖáÁãµã
+					}
+					if (dPts >= 0.0 && dStartPts >= 0.0)
+					{
+						auto tDue = tStart + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+							std::chrono::duration<double>(dPts - dStartPts));
+						//ÏÈ´ÖË¯ÔÙÈÃ³öCPU×ÔĞı£¬¼æ¹ËCPUÕ¼ÓÃÓë¶¨Ê±¾«¶È
+						while (std::chrono::steady_clock::now() < tDue)
 						{
-							FILE* fp_yuv = fopen("output.yuv", "wb+");
-							int y_size = m_avCodecCtx->width * m_avCodecCtx->height;
-							fwrite(m_avFrameDecodec->data[0], 1, y_size, fp_yuv);		//Y 
-							fwrite(m_avFrameDecodec->data[1], 1, y_size / 4, fp_yuv);	//U
-							fwrite(m_avFrameDecodec->data[2], 1, y_size / 4, fp_yuv);	//V
-							fclose(fp_yuv);
-							bSaveOneYuvImage = false;
+							if (tDue - std::chrono::steady_clock::now() > std::chrono::milliseconds(2))
+							{
+								std::this_thread::sleep_for(std::chrono::milliseconds(1));
+							}
+							else
+							{
+								std::this_thread::yield();
+							}
 						}
 					}
-					
-                    //Sleep(1);
-                }
-            }
-        }
-        av_packet_unref(m_avPacket);
-        av_freep(m_avPacket);
-#ifdef _WIN32
-        Sleep(1);
-#else
-		usleep(1000);
-#endif // _WIN32
 
+					// µ÷ÓÃ»Øµ÷£¬°ÑRGB32Êı¾İ½»¸øÉÏ²ãÏÔÊ¾
+					if (CallBackInterface)
+					{
+						CallBackInterface->FFmpegGetRGBFrame((char*)m_avFrameRGB->data[0], m_VideoH, m_VideoW);
+					}
+					bDisplayed = true;
+				}
+			}
+		}
+		av_packet_unref(m_avPacket);
+		if (!bDisplayed)
+		{
+			// ·ÇÊÓÆµÏÔÊ¾Ö¡£¨ÒôÆµ°ü/½âÂëÊ§°ÜµÈ£©ÉÔÎ¢ÈÃ³öCPU£¬½Ú×àÓÉPTSµ÷¶È¿ØÖÆ
+#ifdef _WIN32
+			Sleep(1);
+#else
+			usleep(1000);
+#endif
+		}
 	}
+
 	sws_freeContext(m_avSwsCtx);
+	m_avSwsCtx = NULL;
 	bStartDecodec = false;
+}
+
+double FFmpegHelperCore::GetFrameRate()
+{
+	return m_fFps;
 }
 
 void FFmpegInterface::FFmpegGetDecodecFrame(char * pData, int nHeight, int nWidth)

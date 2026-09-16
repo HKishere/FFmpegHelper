@@ -1,4 +1,5 @@
 #include "FFmpegHelper.h"
+#include <stack>
 
 extern "C"
 {
@@ -26,29 +27,35 @@ public:
 
 	void DecdecThread();
 
+	double GetFrameRate();
+
+
 
 private:
-	char m_strURLorFileName[FH_NAME_MAX_LEN];	//ÊÓÆµURL»òÎÄ¼şÃû
-	int					m_nVideoIndex;		//ÊÓÆµËùÔÚÁ÷Ë÷Òı
-	uint8_t *			m_pBuffer;			//»º´æ´¢½âÂëºóµÄÍ¼Ïñ
+	char m_strURLorFileName[FH_NAME_MAX_LEN];	//è§†é¢‘URLæˆ–æ–‡ä»¶å
+	int					m_nVideoIndex;		//è§†é¢‘æ‰€åœ¨æµç´¢å¼•
+	uint8_t *			m_pBuffer;			//ç¼“å­˜å‚¨è§£ç åçš„å›¾åƒ
 
-	AVFormatContext*	m_avFormatCtx;		//·â×°¡¢¸´ÓÃ¸ñÊ½ÉÏÏÂÎÄ
-	const AVCodec*		m_avCodec;			//½âÂëÆ÷	
-	AVCodecContext*		m_avCodecCtx;		//½âÂëÆ÷	ÉÏÏÂÎÄ
-	SwsContext*			m_avSwsCtx;			//Í¼Ïñ×ª»»ÉÏÏÂÎÄ
-	AVPixelFormat		m_dstFormat;		//×ª»»Ä¿±êÏñËØ¸ñÊ½
+	AVFormatContext*	m_avFormatCtx;		//å°è£…ã€å¤ç”¨æ ¼å¼ä¸Šä¸‹æ–‡
+	const AVCodec*		m_avCodec;			//è§£ç å™¨
+	AVCodecContext*		m_avCodecCtx;		//è§£ç å™¨	ä¸Šä¸‹æ–‡
+	SwsContext*			m_avSwsCtx;			//å›¾åƒè½¬æ¢ä¸Šä¸‹æ–‡
+	AVPixelFormat		m_dstFormat;		//è½¬æ¢ç›®æ ‡åƒç´ æ ¼å¼
 
-	AVFrame*			m_avFrameDecodec;	//½âÂëÍ¼ÏñYUV
-	AVFrame*			m_avFrameRGB;		//×ª»»ºóRGBÍ¼Ïñ
-	AVPacket*			m_avPacket;			//ÊÓÆµÊı¾İ°ü
+	AVFrame*			m_avFrameDecodec;	//è§£ç å›¾åƒYUV
+	AVFrame*			m_avFrameRGB;		//è½¬æ¢åRGBå›¾åƒ
+	AVPacket*			m_avPacket;			//è§†é¢‘æ•°æ®åŒ…
 
-	int					m_VideoH;			//ÊÓÆµ¸ß
-	int					m_VideoW;			//ÊÓÆµ¿í
+	int					m_VideoH;			//è§†é¢‘é«˜
+	int					m_VideoW;			//è§†é¢‘å®½
 
-	bool				bStartDecodec;		//½âÂë¿ªÊ¼±êÖ¾
+	bool				bStartDecodec;		//è§£ç å¼€å§‹æ ‡å¿—
+	bool				bExitThread;		//è§£ç çº¿ç¨‹é€€å‡ºæ ‡å¿—ï¼ˆä¿è¯æœªStartDecodecæ—¶ä¹Ÿèƒ½æ­£å¸¸ææ„ï¼‰
+	double				m_fFps;				//å¸§ç‡ï¼Œä»av_guess_frame_rateä¸­è·å–ï¼Œå®ƒå†…éƒ¨ä¼šæŒ‰ avg_frame_rate -> r_frame_rate -> codecpar çš„é¡ºåºè‡ªåŠ¨é€‰ä¸€ä¸ªæœ€å¯ä¿¡çš„å€¼
 
-	FFmpegInterface*		CallBackInterface;	//»Øµ÷½Ó¿Ú
-	std::thread tDecodec;					//½âÂëÏß³Ì
-	std::condition_variable condition;		//Ìõ¼ş±äÁ¿£¬ÓÃÀ´¿ØÖÆÏß³ÌÆô¶¯£¨ÆäÊµ¿ÉÒÔ²»ÓÃ£¬µ«ÊÇÔİÊ±»¹Ã»Ïë³öÀ´ºÃµÄ½á¹¹£¬¾ÍÏÈÓÃ×Å£©
+	FFmpegInterface*	CallBackInterface;	//å›è°ƒæ¥å£
+	std::thread tDecodec;					//è§£ç çº¿ç¨‹
+	std::condition_variable condition;		//æ¡ä»¶å˜é‡ï¼Œç”¨æ¥æ§åˆ¶çº¿ç¨‹å¯åŠ¨ï¼ˆå…¶å®å¯ä»¥ä¸ç”¨ï¼Œä½†æ˜¯æš‚æ—¶è¿˜æ²¡æƒ³å‡ºæ¥å¥½çš„ç»“æ„ï¼Œå°±å…ˆç”¨ç€ï¼‰
 	std::mutex condition_mutex;
+	std::stack<AVFrame> m_DisplayFrameStack;//æ˜¾ç¤ºå †æ ˆï¼Œç”¨æ¥é‡æ–°æ’åˆ—pã€bå¸§
 };
